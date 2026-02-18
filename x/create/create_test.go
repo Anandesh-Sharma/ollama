@@ -557,6 +557,9 @@ func TestShouldQuantizeTensor(t *testing.T) {
 		// 3D+ tensors should not be quantized
 		{"3D tensor", "conv.weight", []int32{64, 64, 3}, "fp8", false},
 		{"4D tensor", "conv2d.weight", []int32{64, 64, 3, 3}, "fp8", false},
+		// qwen3.5 stacked expert tensors are an exception: 3D [experts, out, in]
+		{"qwen3.5 stacked gate_up_proj", "model.language_model.layers.0.mlp.experts.gate_up_proj", []int32{256, 1024, 2048}, "int4", true},
+		{"qwen3.5 stacked down_proj", "model.language_model.layers.0.mlp.experts.down_proj", []int32{256, 2048, 512}, "int4", true},
 
 		// Embeddings should not be quantized regardless of shape
 		{"embedding 2D", "embed_tokens.weight", []int32{32000, 4096}, "fp8", false},
@@ -586,6 +589,42 @@ func TestShouldQuantizeTensor(t *testing.T) {
 	}
 }
 
+func TestGetTensorQuantization_StackedExperts(t *testing.T) {
+	tests := []struct {
+		name     string
+		shape    []int32
+		quantize string
+		want     string
+	}{
+		{
+			name:     "model.language_model.layers.0.mlp.experts.gate_up_proj",
+			shape:    []int32{256, 1024, 2048},
+			quantize: "int4",
+			want:     "int4",
+		},
+		{
+			name:     "model.language_model.layers.0.mlp.experts.down_proj",
+			shape:    []int32{256, 2048, 512},
+			quantize: "int4",
+			want:     "int8",
+		},
+		{
+			name:     "model.language_model.layers.0.mlp.experts.gate_up_proj",
+			shape:    []int32{256, 1024, 2050}, // not divisible by 32
+			quantize: "int4",
+			want:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := GetTensorQuantization(tt.name, tt.shape, tt.quantize); got != tt.want {
+				t.Fatalf("GetTensorQuantization(%q, %v, %q) = %q, want %q", tt.name, tt.shape, tt.quantize, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExpertGroupPrefix(t *testing.T) {
 	tests := []struct {
 		name string
@@ -595,10 +634,18 @@ func TestExpertGroupPrefix(t *testing.T) {
 		{"model.layers.1.mlp.experts.0.down_proj.weight", "model.layers.1.mlp.experts"},
 		{"model.layers.1.mlp.experts.63.gate_proj.weight", "model.layers.1.mlp.experts"},
 		{"model.layers.0.mlp.experts.0.up_proj.weight", "model.layers.0.mlp.experts"},
+		{"model.language_model.layers.0.mlp.experts.0.up_proj.weight", "model.language_model.layers.0.mlp.experts"},
+		{"model.language_model.model.layers.0.mlp.experts.0.up_proj.weight", "model.language_model.model.layers.0.mlp.experts"},
+		{"model.language_model.layers.0.mlp.experts.gate_up_proj", "model.language_model.layers.0.mlp.experts"},
+		{"model.language_model.layers.0.mlp.experts.down_proj", "model.language_model.layers.0.mlp.experts"},
+		{"model.language_model.model.layers.0.mlp.experts.gate_up_proj", "model.language_model.model.layers.0.mlp.experts"},
+		{"model.language_model.model.layers.0.mlp.experts.down_proj", "model.language_model.model.layers.0.mlp.experts"},
 
 		// Shared expert tensors should return their own group prefix
 		{"model.layers.1.mlp.shared_experts.down_proj.weight", "model.layers.1.mlp.shared_experts"},
 		{"model.layers.2.mlp.shared_experts.gate_proj.weight", "model.layers.2.mlp.shared_experts"},
+		{"model.language_model.layers.1.mlp.shared_experts.down_proj.weight", "model.language_model.layers.1.mlp.shared_experts"},
+		{"model.language_model.model.layers.1.mlp.shared_experts.down_proj.weight", "model.language_model.model.layers.1.mlp.shared_experts"},
 
 		// Non-expert tensors should return empty string
 		{"model.layers.0.mlp.down_proj.weight", ""},    // dense layer, no experts

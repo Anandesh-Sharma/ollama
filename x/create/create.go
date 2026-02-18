@@ -296,13 +296,19 @@ func normalizeQuantType(quantize string) string {
 //   - Down projection weights: int8 (more sensitive, would be Q6 in GGML but no MLX kernel)
 //   - Norms, embeddings, biases, routing gates: no quantization
 func GetTensorQuantization(name string, shape []int32, quantize string) string {
+	isStackedExpert := strings.Contains(name, ".mlp.experts.gate_up_proj") || strings.Contains(name, ".mlp.experts.down_proj")
+
 	// Use basic name-based check first
-	if !ShouldQuantize(name, "") {
+	if !isStackedExpert && !ShouldQuantize(name, "") {
 		return ""
 	}
 
-	// Only quantize 2D tensors (linear layers) - skip 1D (biases, norms) and higher-D (convolutions if any)
-	if len(shape) != 2 {
+	// Quantize 2D linear tensors by default. qwen3.5 stacked expert tensors are
+	// also eligible even though they are stored as 3D [experts, out, in].
+	if !isStackedExpert && len(shape) != 2 {
+		return ""
+	}
+	if isStackedExpert && len(shape) != 3 {
 		return ""
 	}
 
@@ -372,9 +378,10 @@ func GetTensorQuantization(name string, shape []int32, quantize string) string {
 }
 
 // expertGroupRegexp matches expert tensor names and captures the group prefix.
-// Matches: model.layers.{L}.mlp.experts.{E}.{proj}.weight (and .scale, .bias suffixes)
-// Captures: model.layers.{L}.mlp.experts
-var expertGroupRegexp = regexp.MustCompile(`^(model\.layers\.\d+\.mlp\.(?:shared_)?experts)\..*\.weight`)
+// Matches nested and non-nested LLM prefixes and both per-expert ".weight"
+// tensors and qwen3.5 stacked expert tensors without ".weight".
+// Captures: model(.language_model(.model)?).layers.{L}.mlp.experts or .shared_experts
+var expertGroupRegexp = regexp.MustCompile(`^(model(?:\.language_model(?:\.model)?)?\.layers\.\d+\.mlp\.(?:shared_)?experts)\..*(?:\.weight)?$`)
 
 // ExpertGroupPrefix returns the group prefix for expert tensors that should be packed together.
 // For example:

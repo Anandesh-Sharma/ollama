@@ -267,3 +267,20 @@ func LogArrays() {
 	}
 	logutil.Trace(fmt.Sprintf("tensors total: %d, size: %s", len(arrays), PrettyBytes(ActiveMemory())))
 }
+
+// Release forcibly frees arrays regardless of reference accounting.
+// Use only for arrays that are known to be unreachable by any live model state.
+func Release(s ...*Array) (n int) {
+	seen := make(map[*Array]bool, len(s))
+	for _, t := range s {
+		if t == nil || !t.Valid() || seen[t] {
+			continue
+		}
+		seen[t] = true
+		n += t.NumBytes()
+		C.mlx_array_free(t.ctx)
+		t.pinned = false
+		t.ctx.ctx = nil
+	}
+	return n
+}

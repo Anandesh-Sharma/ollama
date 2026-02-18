@@ -3,18 +3,40 @@
 package cache
 
 import (
+	"log/slog"
+	"os"
+
 	"github.com/ollama/ollama/logutil"
 	"github.com/ollama/ollama/x/mlxrunner/mlx"
 )
 
+func kvCacheGrowDebugEnabled() bool {
+	return os.Getenv("OLLAMA_MLX_DEBUG_CACHE_GROW") != ""
+}
+
 type Cache interface {
 	Update(keys, values *mlx.Array) (newKeys, newValues *mlx.Array)
 	State() (keys, values *mlx.Array)
+	Materialize() []*mlx.Array
+	CanTrim() bool
 	Trim(int) int
 	Clone() Cache
 	Free()
 	Offset() int
 	Len() int
+}
+
+// CheckpointRecorder is an optional cache capability for recording recurrent
+// state snapshots at specific token positions.
+type CheckpointRecorder interface {
+	RecordCheckpoint(pos int)
+}
+
+// CheckpointRestorer is an optional cache capability for restoring recurrent
+// state to a previously recorded checkpoint.
+type CheckpointRestorer interface {
+	BestCheckpoint(target int) (pos int, ok bool)
+	RestoreCheckpoint(pos int) bool
 }
 
 type KVCache struct {
@@ -49,6 +71,9 @@ func (c *KVCache) Update(keys, values *mlx.Array) (*mlx.Array, *mlx.Array) {
 			c.keys, c.values = newKeys, newValues
 			mlx.Pin(c.keys, c.values)
 		}
+		if kvCacheGrowDebugEnabled() {
+			slog.Info("KVCache grow", "prev", prev, "new_capacity", c.keys.Dim(2), "step", c.step)
+		}
 	}
 
 	c.offset += L
@@ -66,6 +91,19 @@ func (c *KVCache) State() (*mlx.Array, *mlx.Array) {
 	return c.keys.Slice(mlx.Slice(), mlx.Slice(), mlx.Slice(0, c.offset), mlx.Slice()),
 		c.values.Slice(mlx.Slice(), mlx.Slice(), mlx.Slice(0, c.offset), mlx.Slice())
 }
+
+func (c *KVCache) Materialize() []*mlx.Array {
+	out := make([]*mlx.Array, 0, 2)
+	if c.keys != nil && c.keys.Valid() {
+		out = append(out, c.keys)
+	}
+	if c.values != nil && c.values.Valid() {
+		out = append(out, c.values)
+	}
+	return out
+}
+
+func (c *KVCache) CanTrim() bool { return true }
 
 func (c *KVCache) Trim(n int) int {
 	n = min(c.offset, n)
@@ -189,6 +227,8 @@ func (c *RotatingKVCache) State() (*mlx.Array, *mlx.Array) {
 	}
 	return c.keys, c.values
 }
+
+func (c *RotatingKVCache) CanTrim() bool { return true }
 
 func (c *RotatingKVCache) Trim(n int) int {
 	n = min(c.offset, n)

@@ -19,7 +19,8 @@ func doEval(outputs []*Array, async bool) {
 	defer C.mlx_vector_array_free(vector)
 
 	for _, output := range outputs {
-		if output.Valid() {
+		// Callers may pass optional tensors (e.g. debug-only logprobs) as nil.
+		if output != nil && output.Valid() {
 			C.mlx_vector_array_append_value(vector, output.ctx)
 		}
 	}
