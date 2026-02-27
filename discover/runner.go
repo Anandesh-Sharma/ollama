@@ -87,7 +87,7 @@ func GPUDevices(ctx context.Context, runners []ml.FilteredRunnerDiscovery) []ml.
 			if runtime.GOOS == "windows" {
 				// On Windows with Defender enabled, AV scanning of the DLLs
 				// takes place sequentially and this can significantly increase
-				// the time it takes too do the initial discovery pass.
+				// the time it takes to do the initial discovery pass.
 				// Subsequent loads will be faster as the scan results are
 				// cached
 				bootstrapTimeout = 90 * time.Second
