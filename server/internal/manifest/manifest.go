@@ -104,7 +104,7 @@
 //
 // # Legacy Media Types
 //
-// The appliaction/vnd.ollama.image.model media type is deprecated, but will
+// The application/vnd.ollama.image.model media type is deprecated, but will
 // remain supported for backwards compatibility, for some undefined amount of
 // time. New models should use the media types defined above.
 //
