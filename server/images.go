@@ -310,7 +310,7 @@ func GetModel(name string) (*Model, error) {
 			m.ModelPath = filename
 			m.ParentModel = layer.From
 		case "application/vnd.ollama.image.embed":
-			// Deprecated in versions  > 0.1.2
+			// Deprecated in versions > 0.1.2
 			// TODO: remove this warning in a future version
 			slog.Info("WARNING: model contains embeddings, but embeddings in modelfiles have been deprecated and will be ignored.")
 		case "application/vnd.ollama.image.adapter":
