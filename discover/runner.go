@@ -112,10 +112,10 @@ func GPUDevices(ctx context.Context, runners []ml.FilteredRunnerDiscovery) []ml.
 			}
 
 			ctx1stPass, cancel := context.WithTimeout(ctx, bootstrapTimeout)
-			defer cancel()
 
 			// For this pass, we retain duplicates in case any are incompatible with some libraries
 			devices = append(devices, bootstrapDevices(ctx1stPass, dirs, nil)...)
+			cancel()
 		}
 
 		// In the second pass, we more deeply initialize the GPUs to weed out devices that
