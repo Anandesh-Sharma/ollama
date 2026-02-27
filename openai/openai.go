@@ -215,6 +215,8 @@ type EmbeddingUsage struct {
 	TotalTokens  int `json:"total_tokens"`
 }
 
+// NewError creates an ErrorResponse with the appropriate error type for the
+// given HTTP status code and message.
 func NewError(code int, message string) ErrorResponse {
 	var etype string
 	switch code {
