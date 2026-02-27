@@ -13,7 +13,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/netip"
